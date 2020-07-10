@@ -1,0 +1,22 @@
+<launch>
+    <arg name="model" default="$(find offset_diff_drive_description)/urdf/robot.urdf.xacro" />
+    <arg name="rvizconfig" default="$(find urdf_tutorial)/rviz/urdf.rviz" />
+
+    <param name="robot_description" command="$(find xacro)/xacro $(arg model)" />
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="paused" value="false" />
+        <arg name="extra_gazebo_args" value="--verbose" />
+    </include>
+
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -model robot" />
+
+    <rosparam file="$(find offset_diff_drive_description)/config/control.yaml" command="load" />
+    <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" ns="/robot" args="joint_state_controller offset_diff_drive_controller" />
+
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+        <remap from="/joint_states" to="/robot/joint_states" />
+    </node>
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" required="true"/>
+</launch>

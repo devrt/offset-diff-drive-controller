@@ -1,0 +1,23 @@
+robot:
+  gazebo_ros_control:
+    pid_gains:
+      steer_joint:
+        p: 20.0
+        i: 1
+        d: 0
+  # Publish all joint states -----------------------------------
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50  
+
+  # Controller -------------------------------------------------
+  offset_diff_drive_controller:
+    type: offset_diff_drive_controller/OffsetDiffDriveController
+    left_wheel: 'wheel_l_joint'
+    right_wheel: 'wheel_r_joint'
+    steer: 'steer_joint'
+    wheel_separation : 0.2
+    wheel_radius : 0.04
+    wheel_offset : 0.1
+    pose_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+    twist_covariance_diagonal: [0.001, 0.001, 1000000.0, 1000000.0, 1000000.0, 1000.0]

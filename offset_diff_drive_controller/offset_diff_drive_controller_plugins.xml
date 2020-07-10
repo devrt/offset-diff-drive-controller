@@ -1,0 +1,9 @@
+<library path="lib/liboffset_diff_drive_controller">
+
+  <class name="offset_diff_drive_controller/OffsetDiffDriveController" type="offset_diff_drive_controller::OffsetDiffDriveController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      The OffsetDiffDriveController tracks velocity commands. It expects 2 VelocityJointInterface and 1 PositionJointInterface type of hardware interfaces.
+    </description>
+  </class>
+
+</library>

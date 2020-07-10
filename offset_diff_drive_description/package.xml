@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<package format="2">
+    <name>offset_diff_drive_description</name>
+    <version>0.0.0</version>
+    <description>The offset_diff_drive_description package</description>
+
+    <maintainer email="yosuke.matsusaka@gmail.com">Yosuke Matsusaka</maintainer>
+
+    <license>BSD</license>
+
+    <author email="yosuke.matsusaka@gmail.com">Yosuke Matsusaka</author>
+
+    <buildtool_depend>catkin</buildtool_depend>
+    <build_depend>xacro</build_depend>
+    <build_export_depend>xacro</build_export_depend>
+    <exec_depend>xacro</exec_depend>
+    <exec_depend>gazebo_ros_control</exec_depend>
+    <exec_depend>joint_state_controller</exec_depend>
+    <exec_depend>effort_controllers</exec_depend>
+
+    <export></export>
+</package>
