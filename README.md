@@ -14,4 +14,9 @@ https://www.jstage.jst.go.jp/article/jrsj1983/18/8/18_8_1166/_pdf
 Patent has been expired in 2015/12/11
 https://patents.google.com/patent/US5924512A/en
 
+See following notebook for additional details on the formalization:
+
+https://nbviewer.jupyter.org/github/devrt/offset-diff-drive-controller/blob/master/offset-diff-drive-dynamics.ipynb
+
+
 ![](https://user-images.githubusercontent.com/18067/87118085-6950e600-c2b5-11ea-8fb7-5798db314359.gif)
