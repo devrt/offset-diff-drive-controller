@@ -46,7 +46,7 @@ namespace offset_diff_drive_controller
 {
 
     OffsetDiffDriveController::OffsetDiffDriveController()
-        : command_struct_(), wheel_separation_(0.0), wheel_radius_(0.0), wheel_offset_(0.0), desired_steer_pos_(0.0), base_frame_id_("base_link"), odom_frame_id_("odom"), enable_odom_tf_(true), wheel_left_name_(""), wheel_right_name_(""), steer_name_(""), vel_limit_steer_(8.0), vel_limit_wheel_(8.0)
+        : command_struct_(), wheel_separation_(0.0), wheel_radius_(0.0), wheel_offset_(0.0), desired_steer_pos_(0.0), base_frame_id_("base_link"), odom_frame_id_("odom"), enable_odom_tf_(true), enable_odom_loopback_(true), wheel_left_name_(""), wheel_right_name_(""), steer_name_(""), vel_limit_steer_(8.0), vel_limit_wheel_(8.0), cmd_vel_timeout_(0.5)
     {
     }
 
@@ -57,6 +57,7 @@ namespace offset_diff_drive_controller
         const std::string complete_ns = controller_nh.getNamespace();
         std::size_t id = complete_ns.find_last_of("/");
         name_ = complete_ns.substr(id + 1);
+        robot_hw_ = hw;
 
         // Read parameters
         double publish_rate;
@@ -72,6 +73,9 @@ namespace offset_diff_drive_controller
 
         controller_nh.param("enable_odom_tf", enable_odom_tf_, enable_odom_tf_);
         ROS_INFO_STREAM_NAMED(name_, "Publishing to tf is " << (enable_odom_tf_ ? "enabled" : "disabled"));
+
+        controller_nh.param("enable_odom_loopback", enable_odom_loopback_, enable_odom_loopback_);
+        ROS_INFO_STREAM_NAMED(name_, "Publishing to loopback hardware is " << (enable_odom_loopback_ ? "enabled" : "disabled"));
 
         controller_nh.param("wheel_separation", wheel_separation_, wheel_separation_);
         ROS_INFO_STREAM_NAMED(name_, "Wheel separation set to " << wheel_separation_ << "[m]");
@@ -97,6 +101,10 @@ namespace offset_diff_drive_controller
         controller_nh.param("vel_limit_steer", vel_limit_steer_, vel_limit_steer_);
         ROS_INFO_STREAM_NAMED(name_, "Steering velocity limit set to " << vel_limit_steer_);
 
+        controller_nh.param("cmd_vel_timeout", cmd_vel_timeout_, cmd_vel_timeout_);
+        ROS_INFO_STREAM_NAMED(name_, "Velocity commands will be considered old if they are older than "
+                                         << cmd_vel_timeout_ << "s.");
+
         state_.steer_angle = 0.0;
         state_.wheel_offset = wheel_offset_;
         state_.wheel_radius = wheel_radius_;
@@ -106,6 +114,12 @@ namespace offset_diff_drive_controller
         left_wheel_joint_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle(wheel_left_name_);
         right_wheel_joint_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle(wheel_right_name_);
         steer_joint_ = hw->get<hardware_interface::PositionJointInterface>()->getHandle(steer_name_);
+        if (enable_odom_loopback_)
+        {
+            odom_x_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_x_loopback");
+            odom_y_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_y_loopback");
+            odom_r_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_r_loopback");
+        }
 
         // Read and check settings for odometry covariances
         XmlRpc::XmlRpcValue pose_cov_list;
@@ -175,11 +189,22 @@ namespace offset_diff_drive_controller
         forward_dynamics(joint_param_, state_, cartesian_param_);
 
         // Integrate velocities to update wheel odometry
-        double x = cartesian_param_.dot_x * cos(odometry_.ang) - cartesian_param_.dot_y * sin(odometry_.ang);
-        double y = cartesian_param_.dot_x * sin(odometry_.ang) + cartesian_param_.dot_y * cos(odometry_.ang);
-        odometry_.x += x * dt;
-        odometry_.y += y * dt;
+        double abs_dot_x = cartesian_param_.dot_x * cos(odometry_.ang) - cartesian_param_.dot_y * sin(odometry_.ang);
+        double abs_dot_y = cartesian_param_.dot_x * sin(odometry_.ang) + cartesian_param_.dot_y * cos(odometry_.ang);
+        odometry_.x += abs_dot_x * dt;
+        odometry_.y += abs_dot_y * dt;
         odometry_.ang += cartesian_param_.dot_r * dt;
+
+        // Share odometry using loopback hardware
+        if (enable_odom_loopback_)
+        {
+            odom_x_loopback_.setCommand(abs_dot_x);
+            odom_y_loopback_.setCommand(abs_dot_y);
+            odom_r_loopback_.setCommand(cartesian_param_.dot_r);
+            desired_abs_dot_x_ = odom_x_loopback_.getVelocity();
+            desired_abs_dot_y_ = odom_y_loopback_.getVelocity();
+            desired_dot_r_ = odom_r_loopback_.getVelocity();
+        }
 
         // Publish odometry message
         if (last_state_publish_time_ + publish_period_ < time)
@@ -196,8 +221,8 @@ namespace offset_diff_drive_controller
                 odom_pub_->msg_.pose.pose.position.x = odometry_.x;
                 odom_pub_->msg_.pose.pose.position.y = odometry_.y;
                 odom_pub_->msg_.pose.pose.orientation = orientation;
-                odom_pub_->msg_.twist.twist.linear.x = x;
-                odom_pub_->msg_.twist.twist.linear.y = y;
+                odom_pub_->msg_.twist.twist.linear.x = abs_dot_x;
+                odom_pub_->msg_.twist.twist.linear.y = abs_dot_y;
                 odom_pub_->msg_.twist.twist.angular.z = cartesian_param_.dot_r;
                 odom_pub_->unlockAndPublish();
             }
@@ -216,6 +241,23 @@ namespace offset_diff_drive_controller
 
         // Read velocity command from non-realtime process
         Command curr_cmd = *(command_.readFromRT());
+        const double cmd_dt = (time - curr_cmd.stamp).toSec();
+        if (cmd_dt > cmd_vel_timeout_)
+        {
+            if (enable_odom_loopback_)
+            {
+                desired_r_ += desired_dot_r_ * dt;
+                curr_cmd.lin_x = desired_abs_dot_x_ * cos(desired_r_) - desired_abs_dot_y_ * sin(desired_r_);
+                curr_cmd.lin_y = desired_abs_dot_x_ * sin(desired_r_) + desired_abs_dot_y_ * cos(desired_r_);
+                curr_cmd.ang = desired_dot_r_;
+            }
+            else
+            {
+                curr_cmd.lin_x = 0.0;
+                curr_cmd.lin_y = 0.0;
+                curr_cmd.ang = 0.0;
+            }
+        }
 
         // Compute wheel velocities
         cartesian_param_.dot_x = curr_cmd.lin_x;
@@ -251,6 +293,11 @@ namespace offset_diff_drive_controller
         last_state_publish_time_ = time;
         state_.steer_angle = steer_joint_.getPosition();
         desired_steer_pos_ = steer_joint_.getPosition();
+
+        desired_abs_dot_x_ = 0.0;
+        desired_abs_dot_y_ = 0.0;
+        desired_dot_r_ = 0.0;
+        desired_r_ = 0.0;
     }
 
     void OffsetDiffDriveController::stopping(const ros::Time &time)

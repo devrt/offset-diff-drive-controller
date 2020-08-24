@@ -73,6 +73,7 @@ namespace offset_diff_drive_controller
 
     private:
         std::string name_;
+        hardware_interface::RobotHW *robot_hw_;
 
         // Parameters of the vehicle:
         double wheel_separation_;
@@ -89,11 +90,15 @@ namespace offset_diff_drive_controller
         hardware_interface::JointHandle left_wheel_joint_;
         hardware_interface::JointHandle right_wheel_joint_;
         hardware_interface::JointHandle steer_joint_;
+        hardware_interface::JointHandle odom_x_loopback_;
+        hardware_interface::JointHandle odom_y_loopback_;
+        hardware_interface::JointHandle odom_r_loopback_;
 
         // Odometry publishing:
         ros::Duration publish_period_;
         ros::Time last_state_publish_time_;
         bool enable_odom_tf_;
+        bool enable_odom_loopback_;
         std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> odom_pub_;
         std::shared_ptr<realtime_tools::RealtimePublisher<tf::tfMessage>> tf_odom_pub_;
         struct Odometry
@@ -122,12 +127,18 @@ namespace offset_diff_drive_controller
         Command command_struct_;
         ros::Subscriber sub_command_;
 
+        double cmd_vel_timeout_;
+
     protected:
         void cmdVelCallback(const geometry_msgs::Twist &command);
 
         joint_param joint_param_;
         cartesian_param cartesian_param_;
 
+        double desired_abs_dot_x_;
+        double desired_abs_dot_y_;
+        double desired_dot_r_;
+        double desired_r_;
         double desired_steer_pos_;
     };
 
