@@ -164,21 +164,25 @@ namespace offset_diff_drive_controller
         tf_odom_pub_->msg_.transforms[0].child_frame_id = base_frame_id_;
         tf_odom_pub_->msg_.transforms[0].header.frame_id = odom_frame_id_;
 
-        // Subscribe to cmd_vel topic
-        sub_command_ = controller_nh.subscribe("cmd_vel", 1, &OffsetDiffDriveController::cmdVelCallback, this);
+        if (!enable_odom_loopback_)
+        {
+            // Subscribe to cmd_vel topic
+            sub_command_ = controller_nh.subscribe("cmd_vel", 1, &OffsetDiffDriveController::cmdVelCallback, this);
+        }
 
         return true;
     }
 
     void OffsetDiffDriveController::update(const ros::Time &time, const ros::Duration &period)
     {
+        double dt = period.toSec();
+
         double left_pos = left_wheel_joint_.getPosition();
         double right_pos = right_wheel_joint_.getPosition();
         double steer_pos = steer_joint_.getPosition();
         double left_vel = left_wheel_joint_.getVelocity();
         double right_vel = right_wheel_joint_.getVelocity();
         double steer_vel = steer_joint_.getVelocity();
-        double dt = period.toSec();
 
         state_.steer_angle = steer_pos;
         joint_param_.vel_steer = steer_vel;
@@ -189,11 +193,14 @@ namespace offset_diff_drive_controller
         forward_dynamics(joint_param_, state_, cartesian_param_);
 
         // Integrate velocities to update wheel odometry
-        double abs_dot_x = cartesian_param_.dot_x * cos(odometry_.ang) - cartesian_param_.dot_y * sin(odometry_.ang);
-        double abs_dot_y = cartesian_param_.dot_x * sin(odometry_.ang) + cartesian_param_.dot_y * cos(odometry_.ang);
+        double diff_r = cartesian_param_.dot_r * dt;
+        double cosr = cos(odometry_.ang + 0.5 * diff_r); // use Runge-Kutta 2nd
+        double sinr = sin(odometry_.ang + 0.5 * diff_r);
+        double abs_dot_x = cartesian_param_.dot_x * cosr - cartesian_param_.dot_y * sinr;
+        double abs_dot_y = cartesian_param_.dot_x * sinr + cartesian_param_.dot_y * cosr;
         odometry_.x += abs_dot_x * dt;
         odometry_.y += abs_dot_y * dt;
-        odometry_.ang += cartesian_param_.dot_r * dt;
+        odometry_.ang += diff_r;
 
         // Share odometry using loopback hardware
         if (enable_odom_loopback_)
@@ -239,30 +246,33 @@ namespace offset_diff_drive_controller
             }
         }
 
-        // Read velocity command from non-realtime process
-        Command curr_cmd = *(command_.readFromRT());
-        const double cmd_dt = (time - curr_cmd.stamp).toSec();
-        if (cmd_dt > cmd_vel_timeout_)
+        if (!enable_odom_loopback_)
         {
-            if (enable_odom_loopback_)
-            {
-                desired_r_ += desired_dot_r_ * dt;
-                curr_cmd.lin_x = desired_abs_dot_x_ * cos(desired_r_) - desired_abs_dot_y_ * sin(desired_r_);
-                curr_cmd.lin_y = desired_abs_dot_x_ * sin(desired_r_) + desired_abs_dot_y_ * cos(desired_r_);
-                curr_cmd.ang = desired_dot_r_;
-            }
-            else
+            // Read velocity command from non-realtime process
+            Command curr_cmd = *(command_.readFromRT());
+            const double cmd_dt = (time - curr_cmd.stamp).toSec();
+            if (cmd_dt > cmd_vel_timeout_)
             {
                 curr_cmd.lin_x = 0.0;
                 curr_cmd.lin_y = 0.0;
                 curr_cmd.ang = 0.0;
             }
+            cartesian_param_.dot_x = curr_cmd.lin_x;
+            cartesian_param_.dot_y = curr_cmd.lin_y;
+            cartesian_param_.dot_r = curr_cmd.ang;
+        }
+        else
+        {
+            desired_r_ += desired_dot_r_ * dt;
+            double diff_r = desired_r_ - odometry_.ang;
+            double cosr = cos(odometry_.ang + 0.5 * diff_r); // use Runge-Kutta 2nd
+            double sinr = sin(odometry_.ang + 0.5 * diff_r);
+            cartesian_param_.dot_x = desired_abs_dot_x_ * cosr - desired_abs_dot_y_ * sinr;
+            cartesian_param_.dot_y = desired_abs_dot_x_ * sinr + desired_abs_dot_y_ * cosr;
+            cartesian_param_.dot_r = diff_r / dt;
         }
 
         // Compute wheel velocities
-        cartesian_param_.dot_x = curr_cmd.lin_x;
-        cartesian_param_.dot_y = curr_cmd.lin_y;
-        cartesian_param_.dot_r = curr_cmd.ang;
         inverse_dynamics(cartesian_param_, state_, joint_param_);
 
         // Apply speed limit
