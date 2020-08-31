@@ -138,7 +138,6 @@ namespace offset_diff_drive_controller
         double desired_abs_dot_x_;
         double desired_abs_dot_y_;
         double desired_dot_r_;
-        double desired_r_;
         double desired_steer_pos_;
     };
 

@@ -263,8 +263,7 @@ namespace offset_diff_drive_controller
         }
         else
         {
-            desired_r_ += desired_dot_r_ * dt;
-            double diff_r = desired_r_ - odometry_.ang;
+            double diff_r = desired_dot_r_ * dt;
             double cosr = cos(odometry_.ang + 0.5 * diff_r); // use Runge-Kutta 2nd
             double sinr = sin(odometry_.ang + 0.5 * diff_r);
             cartesian_param_.dot_x = desired_abs_dot_x_ * cosr - desired_abs_dot_y_ * sinr;
@@ -307,7 +306,6 @@ namespace offset_diff_drive_controller
         desired_abs_dot_x_ = 0.0;
         desired_abs_dot_y_ = 0.0;
         desired_dot_r_ = 0.0;
-        desired_r_ = 0.0;
     }
 
     void OffsetDiffDriveController::stopping(const ros::Time &time)
