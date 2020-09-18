@@ -264,8 +264,9 @@ namespace offset_diff_drive_controller
         else
         {
             double diff_r = desired_dot_r_ * dt;
-            double cosr = cos(odometry_.ang + 0.5 * diff_r); // use Runge-Kutta 2nd
-            double sinr = sin(odometry_.ang + 0.5 * diff_r);
+            double ang = odometry_.ang + 0.5 * diff_r; // use Runge-Kutta 2nd
+            double cosr = cos(-ang);
+            double sinr = sin(-ang);
             cartesian_param_.dot_x = desired_abs_dot_x_ * cosr - desired_abs_dot_y_ * sinr;
             cartesian_param_.dot_y = desired_abs_dot_x_ * sinr + desired_abs_dot_y_ * cosr;
             cartesian_param_.dot_r = diff_r / dt;
