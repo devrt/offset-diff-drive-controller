@@ -118,7 +118,7 @@ namespace offset_diff_drive_controller
         {
             odom_x_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_x_loopback");
             odom_y_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_y_loopback");
-            odom_r_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_r_loopback");
+            odom_r_loopback_ = hw->get<hardware_interface::VelocityJointInterface>()->getHandle("odom_t_loopback");
         }
 
         // Read and check settings for odometry covariances
